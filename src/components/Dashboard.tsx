@@ -3,7 +3,7 @@ import type { CityWeatherState } from '../types'
 import { CITIES } from '../data/cities'
 import { fetchCityWeather } from '../lib/fetchWeather'
 import { isWolleMode, wolleWeatherState } from '../lib/wolleMode'
-import { isUffeMode, VOEL } from '../lib/uffeMode'
+import { matchPlaceMode, PLACE_MODES } from '../lib/placeModes'
 import { CityCard } from './CityCard'
 import './Dashboard.css'
 
@@ -13,14 +13,18 @@ const INITIAL_STATE: WeatherByCity = Object.fromEntries(
   CITIES.map((city) => [city.name, { status: 'loading' } as CityWeatherState]),
 )
 
+const INITIAL_PLACE_STATE: WeatherByCity = Object.fromEntries(
+  PLACE_MODES.map((m) => [m.place.name, { status: 'loading' } as CityWeatherState]),
+)
+
 export function Dashboard() {
   const [weather, setWeather] = useState<WeatherByCity>(INITIAL_STATE)
-  const [voel, setVoel] = useState<CityWeatherState>({ status: 'loading' })
+  const [placeWeather, setPlaceWeather] = useState<WeatherByCity>(INITIAL_PLACE_STATE)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [name, setName] = useState('')
 
   const wolle = isWolleMode(name)
-  const uffe = isUffeMode(name)
+  const placeMode = matchPlaceMode(name)
 
   useEffect(() => {
     let cancelled = false
@@ -44,16 +48,24 @@ export function Dashboard() {
         })
     })
 
-    // Also fetch Voel's real weather for the "Uffe" easter egg.
-    fetchCityWeather(VOEL)
-      .then((data) => {
-        if (cancelled) return
-        setVoel({ status: 'success', weather: data })
-      })
-      .catch(() => {
-        if (cancelled) return
-        setVoel({ status: 'error' })
-      })
+    // Also fetch each place-mode location's real weather (Uffe→Voel, Jasper→Groningen).
+    PLACE_MODES.forEach((mode) => {
+      fetchCityWeather(mode.place)
+        .then((data) => {
+          if (cancelled) return
+          setPlaceWeather((prev) => ({
+            ...prev,
+            [mode.place.name]: { status: 'success', weather: data },
+          }))
+        })
+        .catch(() => {
+          if (cancelled) return
+          setPlaceWeather((prev) => ({
+            ...prev,
+            [mode.place.name]: { status: 'error' },
+          }))
+        })
+    })
 
     setUpdatedAt(new Date())
 
@@ -87,15 +99,13 @@ export function Dashboard() {
           <p className="dashboard__hint">☔ Wolle mode: London-autumn vibes everywhere</p>
         )}
 
-        {uffe && (
-          <p className="dashboard__hint">🇩🇰 Uffe mode: it's Voel weather everywhere</p>
-        )}
+        {placeMode && <p className="dashboard__hint">{placeMode.hint}</p>}
       </header>
 
       <main className="dashboard__grid">
         {CITIES.map((city, i) => {
-          const state = uffe
-            ? voel
+          const state = placeMode
+            ? placeWeather[placeMode.place.name]
             : wolle
               ? wolleWeatherState(i)
               : weather[city.name]
